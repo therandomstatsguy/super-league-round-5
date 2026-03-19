@@ -417,6 +417,7 @@ function matchTT(rec, tt) {
 
 function Field({tA,tB,period,tryType,swapped}){
   const [selZ,setSelZ]=useState(null);
+  const [zoneView,setZoneView]=useState('position');
   const maxRound = Math.max(...TRY_RECS.map(x=>x.r));
   const recs=useMemo(()=>{
     let r=TRY_RECS;
@@ -430,20 +431,28 @@ function Field({tA,tB,period,tryType,swapped}){
   const bRecs=useMemo(()=>recs.filter(x=>x.op===bKey),[recs,bKey]);
 
   function zoneStats(records,mode){
-    const counts={};const players={};
-    ZONES.forEach(z=>{counts[z]=0;players[z]={}});
+    const counts={};const positions={};const players={};
+    ZONES.forEach(z=>{counts[z]=0;positions[z]={};players[z]={}});
     records.forEach(r=>{
       const rawZ=r.l;
       const z=mode==="def"?(ZONE_MIRROR[rawZ]||rawZ):rawZ;
       if(!counts.hasOwnProperty(z))return;
       counts[z]++;
-      const name=mode==="def"?r.p:r.s;
+      const pos=mode==="def"?r.p:r.p;
+      const name=mode==="def"?r.c:r.s;
+      positions[z][pos]=(positions[z][pos]||0)+1;
       players[z][name]=(players[z][name]||0)+1;
     });
     const tot=Object.values(counts).reduce((a,b)=>a+b,0);
     const pcts={};ZONES.forEach(z=>pcts[z]=tot?Math.round(counts[z]/tot*1000)/10:0);
-    const sorted={};ZONES.forEach(z=>sorted[z]=Object.entries(players[z]).sort((a,b)=>b[1]-a[1]));
-    return {pcts,players:sorted,total:tot};
+    const sortedPos={};ZONES.forEach(z=>sortedPos[z]=Object.entries(positions[z]).sort((a,b)=>b[1]-a[1]));
+    const sortedPlayers={};ZONES.forEach(z=>sortedPlayers[z]=Object.entries(players[z]).sort((a,b)=>b[1]-a[1]));
+    // All positions and players aggregated across all zones
+    const allPos={};records.forEach(r=>{const p=mode==="def"?r.p:r.p;allPos[p]=(allPos[p]||0)+1});
+    const sortedAllPos=Object.entries(allPos).sort((a,b)=>b[1]-a[1]);
+    const allPlyr={};records.forEach(r=>{const n=mode==="def"?r.c:r.s;allPlyr[n]=(allPlyr[n]||0)+1});
+    const sortedAllPlyr=Object.entries(allPlyr).sort((a,b)=>b[1]-a[1]);
+    return {pcts,positions:sortedPos,players:sortedPlayers,total:tot,allPositions:sortedAllPos,allPlayers:sortedAllPlyr};
   }
 
   const aStats=useMemo(()=>zoneStats(aRecs,"atk"),[aRecs]);
@@ -452,6 +461,8 @@ function Field({tA,tB,period,tryType,swapped}){
   const W=860,rH=155,gap=10,H=rH*2+gap+6;
   const zW=(W-6)/5;
   function clickZone(zone){setSelZ(selZ===zone?null:zone)}
+
+  const detailData = zoneView === 'position' ? 'positions' : 'players';
 
   return (
     <div className="fc">
@@ -499,27 +510,51 @@ function Field({tA,tB,period,tryType,swapped}){
         <span style={{color:'#00ffaa',fontSize:13,fontWeight:800,letterSpacing:1}}>{aKey} ATTACK</span>
         <span style={{color:'var(--t3)',fontSize:11,fontWeight:400,marginLeft:6}}>({aStats.total} tries scored)</span>
       </div>
-      {selZ && (()=>{
+
+      <div className="cr" style={{marginTop:10}}>
+        <div className="cl">View</div>
+        <div className="tg">
+          <button className={"tb"+(zoneView==='position'?" on":"")} onClick={()=>setZoneView('position')}>Position</button>
+          <button className={"tb"+(zoneView==='player'?" on":"")} onClick={()=>setZoneView('player')}>Player</button>
+        </div>
+      </div>
+
+      {selZ ? (()=>{
         const mirrorZ=ZONE_MIRROR[selZ];
-        const aPlayers=aStats.players[selZ]||[];
-        const bPlayers=bStats.players[mirrorZ]||[];
+        const aData=(aStats[detailData]||{})[selZ]||[];
+        const bData=(bStats[detailData]||{})[mirrorZ]||[];
         return (
           <div className="zd">
             <div className="zdg">
               <div>
                 <div className="zdt" style={{color:'#ffffff'}}>{aKey} scorers - {selZ}</div>
-                {aPlayers.length===0?<div className="nd">No tries</div>:
-                  <div style={{maxHeight:95,overflowY:'auto'}}>{aPlayers.map(([n,c],i)=><div key={i} className="zdr"><span className="zpn">{n}</span><span className="zpc" style={{color:'var(--acc)'}}>{c}</span></div>)}</div>}
+                {aData.length===0?<div className="nd">No tries</div>:
+                  <div style={{maxHeight:120,overflowY:'auto'}}>{aData.map(([n,c],i)=><div key={i} className="zdr"><span className="zpn">{n}</span><span className="zpc" style={{color:'var(--acc)'}}>{c}</span></div>)}</div>}
               </div>
               <div>
                 <div className="zdt" style={{color:'#ffffff'}}>{bKey} conceded to - {mirrorZ}</div>
-                {bPlayers.length===0?<div className="nd">No tries</div>:
-                  <div style={{maxHeight:95,overflowY:'auto'}}>{bPlayers.map(([n,c],i)=><div key={i} className="zdr"><span className="zpn">{n}</span><span className="zpc" style={{color:'var(--red)'}}>{c}</span></div>)}</div>}
+                {bData.length===0?<div className="nd">No tries</div>:
+                  <div style={{maxHeight:120,overflowY:'auto'}}>{bData.map(([n,c],i)=><div key={i} className="zdr"><span className="zpn">{n}</span><span className="zpc" style={{color:'var(--red)'}}>{c}</span></div>)}</div>}
               </div>
             </div>
           </div>
         );
-      })()}
+      })() : (
+        <div className="zd">
+          <div className="zdg">
+            <div>
+              <div className="zdt" style={{color:'#ffffff'}}>{aKey} — {zoneView==='player'?'Players Scored':'Positions Scored'}</div>
+              {(()=>{const data=zoneView==='player'?aStats.allPlayers:aStats.allPositions; return data.length===0?<div className="nd">No tries</div>:
+                <div style={{maxHeight:150,overflowY:'auto'}}>{data.map(([p,c],i)=><div key={i} className="zdr"><span className="zpn">{p}</span><span className="zpc" style={{color:'var(--acc)'}}>{c}</span></div>)}</div>})()}
+            </div>
+            <div>
+              <div className="zdt" style={{color:'#ffffff'}}>{bKey} — {zoneView==='player'?'Players Conceded To':'Positions Conceded To'}</div>
+              {(()=>{const data=zoneView==='player'?bStats.allPlayers:bStats.allPositions; return data.length===0?<div className="nd">No tries</div>:
+                <div style={{maxHeight:150,overflowY:'auto'}}>{data.map(([p,c],i)=><div key={i} className="zdr"><span className="zpn">{p}</span><span className="zpc" style={{color:'var(--red)'}}>{c}</span></div>)}</div>})()}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -968,7 +1003,7 @@ function FormDots({team}) {
   );
 }
 
-function TopMarkets({game}) {
+function TopMarkets({game, mode}) {
   const [selectedTile, setSelectedTile] = useState(null);
 
   const tiles = useMemo(() => {
@@ -1109,8 +1144,11 @@ function TopMarkets({game}) {
 
     // Sort: longest streaks first
     result.sort((a, b) => b.stat - a.stat);
+    // Filter by mode
+    if (mode === 'tryscorer') return result.filter(t => t.type === 'tryscorer');
+    if (mode === 'team') return result.filter(t => t.type === 'streak');
     return result;
-  }, [game]);
+  }, [game, mode]);
 
   if (tiles.length === 0) return null;
 
@@ -1250,7 +1288,7 @@ function App() {
 
         {tab === "tryscorers" && (
           <>
-            <TopMarkets game={game}/>
+            <TopMarkets game={game} mode="tryscorer"/>
 
             <div className="sec">
               <div className="stit"><span>Try Scoring Zones</span></div>
@@ -1296,7 +1334,10 @@ function App() {
         )}
 
         {tab === "teamstats" && (
-          <TeamStats game={game}/>
+          <>
+            <TopMarkets game={game} mode="team"/>
+            <TeamStats game={game}/>
+          </>
         )}
       </div>
 
